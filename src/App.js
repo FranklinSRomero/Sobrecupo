@@ -131,6 +131,7 @@ class Room {
 
 // FUNCIÓN DE INICIALIZACIÓN DE LOS SALONES
 const initialize = async (roomsJson) => {
+  console.time('initialize');
   const buildings = {};
   let response = roomsJson;
   //TODO revisar "CP", "K2", "ES"
@@ -161,45 +162,51 @@ const initialize = async (roomsJson) => {
 
   for (let element of response) {
     for (let pattern of element.schedules) {
-      let date_ini = new Date(pattern.date_ini);
-      let date_fin = new Date(pattern.date_fin);
+      try {
+        let date_ini = new Date(pattern.date_ini);
+        let date_fin = new Date(pattern.date_fin);
 
-      if (date_ini <= actual_date && date_fin >= actual_date) {
-        let classroom = pattern.classroom;
-        let building_name = classroom.split('_')[0].slice(1);
-        let room_name = classroom.split('_')[1];
+        if (date_ini <= actual_date && date_fin >= actual_date) {
+          let classroom = pattern.classroom;
+          let building_name = classroom.split('_')[0].slice(1);
+          let room_name = classroom.split('_')[1];
 
-        //Ignora los edificios que no se quieren mostrar
-        if (building_blacklist.includes(building_name)) {
-          continue;
-        }
+          //Ignora los edificios que no se quieren mostrar
+          if (building_blacklist.includes(building_name)) {
+            continue;
+          }
 
-        if (buildings[building_name] == null) {
-          buildings[building_name] = new Building(building_name);
-        }
+          if (buildings[building_name] == null) {
+            buildings[building_name] = new Building(building_name);
+          }
 
-        let room = new Room(room_name);
-        if (buildings[building_name].getRoom(room_name) == null) {
+          let room = new Room(room_name);
+          if (buildings[building_name].getRoom(room_name) == null) {
+            buildings[building_name].addRoom(room);
+          }
+
+          for (let day = 0; day <= 6; day++) {
+            if (pattern[days[day]] !== null) {
+              buildings[building_name]
+                .getRoom(room_name)
+                .addAvailability(day, [pattern.time_ini, pattern.time_fin], 10);
+            }
+          }
+
           buildings[building_name].addRoom(room);
         }
-
-        for (let day = 0; day <= 6; day++) {
-          if (pattern[days[day]] !== null) {
-            buildings[building_name]
-              .getRoom(room_name)
-              .addAvailability(day, [pattern.time_ini, pattern.time_fin], 10);
-          }
-        }
-
-        buildings[building_name].addRoom(room);
+      } catch (error) {
+        console.error('Error processing schedule:', pattern, error);
       }
     }
   }
+  console.timeEnd('initialize');
   return buildings;
 };
 
 const App = () => {
   const [data, setData] = useState(undefined);
+  const [loading, setLoading] = useState(true); // Estado para controlar el indicador de carga
 
   // FUNCIÓN PARA OBTENER LA DISPONIBILIDAD DE LOS CURSOS
   const getAvailableRooms = (
@@ -233,8 +240,16 @@ const App = () => {
   useEffect(() => {
     // 1.0 Carga la informacion de los salones desde el archivo JSON
     const loadData = async () => {
-      const dt = await initialize(courseFile);
-      setData(dt); // En este punto se quita el símbolo de carga de la pantalla principal
+      setLoading(true); // Activa el indicador de carga
+      try {
+        const dt = await initialize(courseFile);
+        setData(dt);
+      } catch (error) {
+        console.error('Error loading data:', error);
+        // Aquí podrías mostrar un mensaje de error al usuario
+      } finally {
+        setLoading(false); // Desactiva el indicador de carga
+      }
       return;
     };
     loadData();
@@ -253,7 +268,7 @@ const App = () => {
           {/* <Header/> va dento de cada uno*/}
           <BrowserRouter basename="/Sobrecupo">
             <Routes>
-              <Route path="/" element={<Welcome />} />
+              <Route path="/" element={loading ? <div>Cargando...</div> : <Welcome />} /> {/* Muestra un mensaje de carga si loading es true */}
               <Route path="/buildings" element={<Buildings />} />
               <Route path="/classrooms/:building" element={<Classrooms />} />
               <Route path="*" element={<PageNotFound />} />
